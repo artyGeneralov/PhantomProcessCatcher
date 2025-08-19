@@ -39,11 +39,12 @@ namespace PhantomProcessCatcher
         }
 
 
-        private void gridProcs_CellContentClick(object sender, DataGridViewCellEventArgs e)
+        private void gridProcs_SelectionChanged(object sender, EventArgs e)
         {
             DataGridViewRow row = gridProcs.CurrentRow;
             ProcessEntry entry = row.DataBoundItem as ProcessEntry;
-            List<string> dlls = new List<string>((_monitor.GetDllsForProcess(entry.Pid)).ToList<string>());
+            var dlls = _monitor.GetDllsForProcess(entry);
+            Console.WriteLine($"Showing dlls for process {entry.Name}");
             lstDlls.BeginUpdate();
             try
             {

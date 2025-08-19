@@ -75,7 +75,7 @@
             this.gridProcs.SelectionMode = System.Windows.Forms.DataGridViewSelectionMode.FullRowSelect;
             this.gridProcs.Size = new System.Drawing.Size(728, 490);
             this.gridProcs.TabIndex = 1;
-            this.gridProcs.CellContentClick += new System.Windows.Forms.DataGridViewCellEventHandler(this.gridProcs_CellContentClick);
+            this.gridProcs.SelectionChanged += gridProcs_SelectionChanged;
             // 
             // lstDlls
             // 
