@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using PhantomProcessCatcher.data;
 using System.ComponentModel;
 using Microsoft.Diagnostics.Tracing.Parsers.Clr;
+using System.Linq;
 
 
 namespace PhantomProcessCatcher
@@ -12,6 +13,7 @@ namespace PhantomProcessCatcher
     {
 
         private readonly BindingList<ProcessEntry> _rows = new BindingList<ProcessEntry>();
+        
         private readonly ProcessMonitor _monitor = new ProcessMonitor();
         private bool _started = false;
         public MainWindow()
@@ -39,7 +41,16 @@ namespace PhantomProcessCatcher
 
         private void gridProcs_CellContentClick(object sender, DataGridViewCellEventArgs e)
         {
-
+            DataGridViewRow row = gridProcs.CurrentRow;
+            ProcessEntry entry = row.DataBoundItem as ProcessEntry;
+            List<string> dlls = new List<string>((_monitor.GetDllsForProcess(entry.Pid)).ToList<string>());
+            lstDlls.BeginUpdate();
+            try
+            {
+                lstDlls.DataSource = null;
+                lstDlls.DataSource = dlls;
+            }
+            finally { lstDlls.EndUpdate(); }
         }
 
         private void btnStop_Click(object sender, EventArgs e)

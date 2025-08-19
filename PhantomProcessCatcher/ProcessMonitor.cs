@@ -23,11 +23,15 @@ namespace PhantomProcessCatcher
         private Task _pumpTask;
         private readonly ConcurrentDictionary<int, ProcessEntry> _live = new ConcurrentDictionary<int, ProcessEntry>();
         private readonly ConcurrentDictionary<int, ProcessEntry> _shortLivedProcesses = new ConcurrentDictionary<int, ProcessEntry>();
-        private readonly ConcurrentDictionary<int, HashSet<string>> _liveDlls = new ConcurrentDictionary<int, HashSet<string>>();
-        private readonly ConcurrentDictionary<int, HashSet<string>> _shortLivedDlls = new ConcurrentDictionary<int, HashSet<string>>();
-        //private readonly ConcurrentDictionary<int, >
+        private readonly ConcurrentDictionary<int, HashSet<string>> _dlls = new ConcurrentDictionary<int, HashSet<string>>();
 
         private int procNum = 1;
+
+        public ProcessMonitor()
+        {
+            Interval = 10;
+        }
+
 
         public void StartMonitoring()
         {
@@ -41,18 +45,13 @@ namespace PhantomProcessCatcher
             _session = new TraceEventSession($"PhantomProcessCatcher-{Guid.NewGuid()}");
             _session.StopOnDispose = true;
 
-            _session.EnableKernelProvider(KernelTraceEventParser.Keywords.Process);
+            _session.EnableKernelProvider(KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.ImageLoad);
 
             _session.Source.Kernel.ProcessStart += processStarted;
             _session.Source.Kernel.ProcessStop += processStopped;
             _session.Source.Kernel.ImageLoad += dllLoaded;
 
             _pumpTask = Task.Run(() => _session.Source.Process());
-            
-
-
-            
-
         }
 
         private void processStarted(ProcessTraceData data)
@@ -61,7 +60,6 @@ namespace PhantomProcessCatcher
             {
                 ProcessEntry e = new ProcessEntry(data.ProcessID, data.ProcessName, DateTime.UtcNow, "User");
                 _live[data.ProcessID] = e;
-                ShortLivedDetected?.Invoke(this, e);
             }
         }
 
@@ -71,13 +69,34 @@ namespace PhantomProcessCatcher
             TimeSpan elapsed = DateTime.UtcNow - _live[data.ProcessID].CreationTime;
             if(elapsed.Seconds < Interval)
             {
-                _shortLivedProcesses[data.ProcessID] = 
+                if (!_shortLivedProcesses.ContainsKey(data.ProcessID))
+                {
+                    ProcessEntry e = _live[data.ProcessID];
+                    _shortLivedProcesses[data.ProcessID] = new ProcessEntry(e);
+                    _live.TryRemove(data.ProcessID, out _);
+                    ShortLivedDetected?.Invoke(this, e);
+                }
+            }
+            else
+            {
+                _live.TryRemove(data.ProcessID, out _);
             }
         }
 
         private void dllLoaded(ImageLoadTraceData data)
         {
+            if (!_live.ContainsKey(data.ProcessID)) return;
+            if (!_dlls.ContainsKey(data.ProcessID))
+            {
+                _dlls[data.ProcessID] = new HashSet<string>();
+            }
+            _dlls[data.ProcessID].Add(data.FileName);
+            Console.WriteLine($"Dll {data.FileName}.dll has been loaded");
+        }
 
+        public HashSet<string> GetDllsForProcess(int pid)
+        {
+            return _dlls.TryGetValue(pid, out var dlls) ? dlls : new HashSet<string>();
         }
         public void StopMonitoring() 
         {
