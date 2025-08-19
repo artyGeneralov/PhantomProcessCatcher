@@ -57,7 +57,7 @@ namespace PhantomProcessCatcher
         {
             if (!_liveProcesses.ContainsKey(data.ProcessID))
             {
-                ProcessEntry e = new ProcessEntry(data.ProcessID, data.ProcessName, DateTime.UtcNow, "User");
+                ProcessEntry e = new ProcessEntry(data.ProcessID, data.ProcessName, data.TimeStamp.ToUniversalTime(), "User");
                 _liveProcesses[data.ProcessID] = e;
             }
         }
