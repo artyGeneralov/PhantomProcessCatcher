@@ -4,8 +4,10 @@ using System.Threading.Tasks;
 using System.Collections.Generic;
 using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
 using Microsoft.Diagnostics.Tracing.Session;
+using Microsoft.Diagnostics.Tracing;
 using System.Collections.Concurrent;
 using Microsoft.Diagnostics.Tracing.Parsers;
+using System.Runtime.InteropServices;
 
 
 namespace PhantomProcessCatcher
@@ -16,8 +18,9 @@ namespace PhantomProcessCatcher
         public bool IsRunning { get; private set; }
         public event EventHandler<ProcessEntry> ShortLivedDetected;
 
-        private TraceEventSession _session;
+        private ETWTraceEventSource _source;
         private Task _pumpTask;
+        private DateTime _acceptEventsAfterUtc;
 
         private readonly ConcurrentDictionary<int, ProcessEntry> _liveProcesses = new ConcurrentDictionary<int, ProcessEntry>(); // Tracks the live processes that are currently running (since start of monitoring)
         private readonly ConcurrentDictionary<string, ProcessEntry> _shortLivedProcesses = new ConcurrentDictionary<string, ProcessEntry>(); // Saves short lived processes that have already stopped.
@@ -33,6 +36,8 @@ namespace PhantomProcessCatcher
         }
 
 
+        /* Main etw trace setup and disposal */
+
         public void StartMonitoring()
         {
             if (IsRunning) return;
@@ -40,46 +45,92 @@ namespace PhantomProcessCatcher
             {
                 throw new InvalidOperationException("Run as Administrator.");
             }
+            _acceptEventsAfterUtc = DateTime.UtcNow;
+
+            /* all of this is here so that the freaking thing restarts properly. 
+             * Sometimes after you start the monitoring, stop it, close the program and restart - it would give you this 0x80071069 error, and tell you that the instance name passed
+             * is not recognized as a WMI data provider. The devil knows what causes that error, but restarting everything seems to get it working...
+             */
+            void StartPump()
+            {
+                _source = new ETWTraceEventSource(KernelTraceEventParser.KernelSessionName,
+                    TraceEventSourceType.Session);
+                KernelTraceEventParser kernel = new KernelTraceEventParser(_source);
+
+                kernel.ProcessStart += processStarted;
+                kernel.ProcessStop += processStopped;
+                kernel.ImageLoad += dllLoaded;
+                kernel.ObjectCreateHandle += HandleCreated;
+
+                _pumpTask = Task.Run(() =>
+                {
+
+                    try
+                    {
+                        _source.Process();
+                    }
+                    catch (COMException ex) when ((uint)ex.HResult == 0x80071069)
+                    {
+                        try
+                        {
+                            _source.Dispose();
+                        }
+                        catch { }
+
+                        EnsureKernelKeywords(); // (re)start the kernel logger
+                        _source = new ETWTraceEventSource(KernelTraceEventParser.KernelSessionName,
+                                                          TraceEventSourceType.Session);
+                        KernelTraceEventParser k2 = new KernelTraceEventParser(_source);
+                        k2.ProcessStart += processStarted;
+                        k2.ProcessStop += processStopped;
+                        k2.ImageLoad += dllLoaded;
+                        k2.ObjectCreateHandle += HandleCreated;
+
+                        _source.Process();
+                    }
+
+
+                });
+            }
+            EnsureKernelKeywords();
+            StartPump();
 
             IsRunning = true;
-            _session = new TraceEventSession(KernelTraceEventParser.KernelSessionName);
-            _session.StopOnDispose = false;
-
-            _session.EnableKernelProvider(KernelTraceEventParser.Keywords.Process 
-                | KernelTraceEventParser.Keywords.ImageLoad 
-                | KernelTraceEventParser.Keywords.Handle
-                );
-
-            _session.Source.Kernel.ProcessStart += processStarted;
-            _session.Source.Kernel.ProcessStop += processStopped;
-            _session.Source.Kernel.ImageLoad += dllLoaded;
-            _session.Source.Kernel.ObjectCreateHandle += HandleCreated;
-
-            _pumpTask = Task.Run(() => _session.Source.Process());
         }
 
+        public async Task StopMonitoringAsync()
+        {
+            if (!IsRunning) return;
+            var src = _source;
+            var pump = _pumpTask;
+            try { src?.StopProcessing(); } catch { }
+
+            if (pump != null)
+                await pump.ConfigureAwait(true);
+            try { src?.Dispose(); } catch { }
+            _source = null;
+            _pumpTask = null;
+            IsRunning = false;
+        }
+
+        /* Callbacks for the etw thing:
+         * - processStarted
+         * - processStopped
+         * - dllLoaded (ImageLoaded is probably more correct, but I'll go with dll...)
+         * - HandleCreated
+         */
         private void processStarted(ProcessTraceData data)
         {
+            if (TooOld(data.TimeStamp.ToUniversalTime())) return;
             if (!_liveProcesses.ContainsKey(data.ProcessID))
             {
                 ProcessEntry e = new ProcessEntry(data.ProcessID, data.ProcessName, data.TimeStamp.ToUniversalTime(), "User");
                 _liveProcesses[data.ProcessID] = e;
             }
         }
-
-        private void HandleCreated(ObjectHandleTraceData data)
-        {
-            int process_id = data.ProcessID;
-            if (!_liveProcesses.ContainsKey(process_id)) return;
-            if (!_liveHandles.ContainsKey(process_id))
-            {
-                _liveHandles[process_id] = new HashSet<HandleData>();
-            }
-            _liveHandles[process_id].Add(new HandleData(data.ProcessID, data.Object, data.ObjectTypeName, data.ObjectName));
-        }
-
         private void processStopped(ProcessTraceData data)
         {
+            if (TooOld(data.TimeStamp.ToUniversalTime())) return;
             if (!_liveProcesses.TryGetValue(data.ProcessID, out ProcessEntry entry)) return;
             double elapsed = (data.TimeStamp.ToUniversalTime() - entry.CreationTime).TotalSeconds;
             if(elapsed < Interval)
@@ -115,15 +166,25 @@ namespace PhantomProcessCatcher
             {
                 _liveProcesses.TryRemove(data.ProcessID, out _);
                 _liveDlls.TryRemove(data.ProcessID, out _);
+                _liveHandles.TryRemove(data.ProcessID, out _);
             }
         }
-        private string _getShortProcessString(int pid, DateTime creationTime)
+
+        private void HandleCreated(ObjectHandleTraceData data)
         {
-            return pid + creationTime.Ticks.ToString();
+            if (TooOld(data.TimeStamp.ToUniversalTime())) return;
+            int process_id = data.ProcessID;
+            if (!_liveProcesses.ContainsKey(process_id)) return;
+            if (!_liveHandles.ContainsKey(process_id))
+            {
+                _liveHandles[process_id] = new HashSet<HandleData>();
+            }
+            _liveHandles[process_id].Add(new HandleData(data.ProcessID, data.Object, data.ObjectTypeName, data.ObjectName));
         }
 
         private void dllLoaded(ImageLoadTraceData data)
         {
+            if (TooOld(data.TimeStamp.ToUniversalTime())) return;
             if (!_liveProcesses.ContainsKey(data.ProcessID)) return;
             if (!_liveDlls.ContainsKey(data.ProcessID))
             {
@@ -131,8 +192,11 @@ namespace PhantomProcessCatcher
             }
 
             _liveDlls[data.ProcessID].Add(new DllData(data.FileName, data.FileName));
+            Console.WriteLine($"Loaded dll {data.FileName} for process {_liveProcesses[data.ProcessID].Name}");
         }
 
+
+        /* Data access */
         public IReadOnlyList<DllData> GetDllsForProcess(ProcessEntry entry)
         {
             string key = _getShortProcessString(entry.Pid, entry.CreationTime);
@@ -145,15 +209,36 @@ namespace PhantomProcessCatcher
             string key = _getShortProcessString(entry.Pid, entry.CreationTime);
             return _shortLivedHandles.TryGetValue(key, out var handles) ? new List<HandleData>(handles) : new List<HandleData>(0);
         }
-        public void StopMonitoring() 
+
+
+
+
+
+        /* Private helpers */
+
+        private void EnsureKernelKeywords()
         {
-            if (!IsRunning) return;
-            _session?.Dispose();
-            _pumpTask?.Wait(2000);
-            _pumpTask = null;
-            IsRunning = false;
+
+
+            var keywords = KernelTraceEventParser.Keywords.Process
+                | KernelTraceEventParser.Keywords.ImageLoad
+                | KernelTraceEventParser.Keywords.Handle;
+
+            using (var controller = new TraceEventSession(KernelTraceEventParser.KernelSessionName))
+            {
+                controller.StopOnDispose = false;
+                try
+                {
+                    controller.EnableKernelProvider(keywords);
+                }
+                catch (COMException e) when ((uint)e.HResult == 0x80070522) { }
+            }
 
         }
-        
+
+        private bool TooOld(DateTime utc) => utc < _acceptEventsAfterUtc;
+
+        private string _getShortProcessString(int pid, DateTime t) => pid + ":" + t.Ticks;
+
     }
 }

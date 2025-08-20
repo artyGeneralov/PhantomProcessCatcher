@@ -75,12 +75,13 @@ namespace PhantomProcessCatcher
            
         }
 
-        private void btnStop_Click(object sender, EventArgs e)
+        private async void btnStop_Click(object sender, EventArgs e)
         {
             if (_started)
             {
                 _monitor.ShortLivedDetected -= OnShortLivedProcessDetected;
-                _monitor.StopMonitoring();
+                btnStop.Enabled = false;
+                try { await _monitor.StopMonitoringAsync(); } finally { btnStop.Enabled = true; }
                 _started = false;
             }
         }
