@@ -31,8 +31,10 @@
             this.btnStop = new System.Windows.Forms.Button();
             this.btnStart = new System.Windows.Forms.Button();
             this.gridProcs = new System.Windows.Forms.DataGridView();
-            this.lstDlls = new System.Windows.Forms.ListBox();
+            this.gridDetails = new System.Windows.Forms.DataGridView();
+            this.btnToggleDetails = new System.Windows.Forms.Button();
             ((System.ComponentModel.ISupportInitialize)(this.gridProcs)).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)(this.gridDetails)).BeginInit();
             this.SuspendLayout();
             // 
             // btnStop
@@ -75,28 +77,39 @@
             this.gridProcs.SelectionMode = System.Windows.Forms.DataGridViewSelectionMode.FullRowSelect;
             this.gridProcs.Size = new System.Drawing.Size(728, 490);
             this.gridProcs.TabIndex = 1;
-            this.gridProcs.SelectionChanged += gridProcs_SelectionChanged;
             // 
-            // lstDlls
+            // gridDetails
             // 
-            this.lstDlls.FormattingEnabled = true;
-            this.lstDlls.Location = new System.Drawing.Point(818, 158);
-            this.lstDlls.Name = "lstDlls";
-            this.lstDlls.Size = new System.Drawing.Size(347, 290);
-            this.lstDlls.TabIndex = 4;
+            this.gridDetails.ColumnHeadersHeightSizeMode = System.Windows.Forms.DataGridViewColumnHeadersHeightSizeMode.AutoSize;
+            this.gridDetails.Location = new System.Drawing.Point(813, 153);
+            this.gridDetails.Name = "gridDetails";
+            this.gridDetails.Size = new System.Drawing.Size(431, 361);
+            this.gridDetails.TabIndex = 4;
+            // 
+            // btnToggleDetails
+            // 
+            this.btnToggleDetails.Location = new System.Drawing.Point(813, 103);
+            this.btnToggleDetails.Name = "btnToggleDetails";
+            this.btnToggleDetails.Size = new System.Drawing.Size(90, 35);
+            this.btnToggleDetails.TabIndex = 5;
+            this.btnToggleDetails.Text = "Show Handles";
+            this.btnToggleDetails.UseVisualStyleBackColor = true;
+            this.btnToggleDetails.Click += new System.EventHandler(this.btnToggleDetails_Click);
             // 
             // MainWindow
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(1291, 617);
-            this.Controls.Add(this.lstDlls);
+            this.Controls.Add(this.btnToggleDetails);
+            this.Controls.Add(this.gridDetails);
             this.Controls.Add(this.btnStop);
             this.Controls.Add(this.btnStart);
             this.Controls.Add(this.gridProcs);
             this.Name = "MainWindow";
             this.Text = "Form1";
             ((System.ComponentModel.ISupportInitialize)(this.gridProcs)).EndInit();
+            ((System.ComponentModel.ISupportInitialize)(this.gridDetails)).EndInit();
             this.ResumeLayout(false);
 
         }
@@ -108,7 +121,8 @@
         private System.Windows.Forms.DataGridView gridProcs;
         private System.Windows.Forms.TableLayoutPanel tableLayoutPanel1;
         private System.Windows.Forms.FlowLayoutPanel flowLayoutPanel1;
-        private System.Windows.Forms.ListBox lstDlls;
+        private System.Windows.Forms.DataGridView gridDetails;
+        private System.Windows.Forms.Button btnToggleDetails;
     }
 }
 
