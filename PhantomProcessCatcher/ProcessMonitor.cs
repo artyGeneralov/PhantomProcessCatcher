@@ -121,7 +121,7 @@ namespace PhantomProcessCatcher
          */
         private void processStarted(ProcessTraceData data)
         {
-            if (TooOld(data.TimeStamp.ToUniversalTime())) return;
+            if (_tooOld(data.TimeStamp.ToUniversalTime())) return;
             if (!_liveProcesses.ContainsKey(data.ProcessID))
             {
                 ProcessEntry e = new ProcessEntry(data.ProcessID, data.ProcessName, data.TimeStamp.ToUniversalTime(), "User");
@@ -130,7 +130,7 @@ namespace PhantomProcessCatcher
         }
         private void processStopped(ProcessTraceData data)
         {
-            if (TooOld(data.TimeStamp.ToUniversalTime())) return;
+            if (_tooOld(data.TimeStamp.ToUniversalTime())) return;
             if (!_liveProcesses.TryGetValue(data.ProcessID, out ProcessEntry entry)) return;
             double elapsed = (data.TimeStamp.ToUniversalTime() - entry.CreationTime).TotalSeconds;
             if(elapsed < Interval)
@@ -151,6 +151,7 @@ namespace PhantomProcessCatcher
                     if(_liveHandles.ContainsKey(data.ProcessID))
                     {
                         _shortLivedHandles[processIdString] = new HashSet<HandleData>(_liveHandles[data.ProcessID]);
+                        Console.WriteLine($"Added {_shortLivedHandles[processIdString].Count} new handles to process {_shortLivedProcesses[processIdString].Name}");
                     }
 
 
@@ -172,7 +173,7 @@ namespace PhantomProcessCatcher
 
         private void HandleCreated(ObjectHandleTraceData data)
         {
-            if (TooOld(data.TimeStamp.ToUniversalTime())) return;
+            if (_tooOld(data.TimeStamp.ToUniversalTime())) return;
             int process_id = data.ProcessID;
             if (!_liveProcesses.ContainsKey(process_id)) return;
             if (!_liveHandles.ContainsKey(process_id))
@@ -184,15 +185,16 @@ namespace PhantomProcessCatcher
 
         private void dllLoaded(ImageLoadTraceData data)
         {
-            if (TooOld(data.TimeStamp.ToUniversalTime())) return;
+            if (_tooOld(data.TimeStamp.ToUniversalTime())) return;
             if (!_liveProcesses.ContainsKey(data.ProcessID)) return;
             if (!_liveDlls.ContainsKey(data.ProcessID))
             {
                 _liveDlls[data.ProcessID] = new HashSet<DllData>();
             }
 
-            _liveDlls[data.ProcessID].Add(new DllData(data.FileName, data.FileName));
-            Console.WriteLine($"Loaded dll {data.FileName} for process {_liveProcesses[data.ProcessID].Name}");
+            string fullPath = data.FileName;
+            string name = fullPath?.Substring(fullPath.LastIndexOfAny(new[] { '\\', '/' }) + 1);
+            _liveDlls[data.ProcessID].Add(new DllData(name, fullPath));
         }
 
 
@@ -236,7 +238,7 @@ namespace PhantomProcessCatcher
 
         }
 
-        private bool TooOld(DateTime utc) => utc < _acceptEventsAfterUtc;
+        private bool _tooOld(DateTime utc) => utc < _acceptEventsAfterUtc;
 
         private string _getShortProcessString(int pid, DateTime t) => pid + ":" + t.Ticks;
 

@@ -25,6 +25,7 @@ namespace PhantomProcessCatcher
         public MainWindow()
         {
             InitializeComponent();
+            this.gridProcs.SelectionChanged += gridProcs_SelectionChanged;
             gridProcs.AutoGenerateColumns = true;
 
             gridProcs.DataSource = _processGridRows;
