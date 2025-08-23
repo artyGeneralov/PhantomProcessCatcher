@@ -87,6 +87,7 @@
             this.gridDetails.ColumnHeadersHeightSizeMode = System.Windows.Forms.DataGridViewColumnHeadersHeightSizeMode.AutoSize;
             this.gridDetails.Location = new System.Drawing.Point(813, 153);
             this.gridDetails.Name = "gridDetails";
+            this.gridDetails.RowHeadersVisible = false;
             this.gridDetails.ScrollBars = System.Windows.Forms.ScrollBars.Vertical;
             this.gridDetails.Size = new System.Drawing.Size(431, 361);
             this.gridDetails.TabIndex = 4;

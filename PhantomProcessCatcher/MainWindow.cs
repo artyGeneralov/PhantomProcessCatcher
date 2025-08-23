@@ -44,7 +44,6 @@ namespace PhantomProcessCatcher
                 BeginInvoke(new Action(() => OnShortLivedProcessDetected(sender, e)));
                 return;
             }
-            Console.WriteLine("Added detected");
             _processGridRows.Add(e);
         }
 
@@ -94,6 +93,7 @@ namespace PhantomProcessCatcher
                 _monitor.ShortLivedDetected += OnShortLivedProcessDetected;
                 _started = true;
             }
+            Console.WriteLine("Clicked Button");
             _monitor.StartMonitoring();
         }
 
